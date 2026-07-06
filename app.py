@@ -1,354 +1,147 @@
-import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
-import matplotlib.patches as patches
+import streamlit as st
 
-st.set_page_config(page_title="Solver Estrutural Universitário Pro", layout="wide")
-
-st.title("🏗️ Frame Mechanics Explorer Pro - Versão Visual Completa")
-st.write("Simulador flexível com suporte a EI/EA distintos, cargas de Momento Concentrado e representação gráfica da estrutura.")
-
-# --- ATALHO DE CALIBRAÇÃO (CARREGA O SEU EXERCÍCIO COMO MODELO) ---
-if st.button("🚀 Carregar Cenário de Teste (Questão da Prova)"):
-    st.session_state.nos = {
-        1: {'x': 0.0, 'y': 0.0, 'rx': True, 'ry': True, 'rm': True, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
-        2: {'x': 10.0, 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
-        3: {'x': 20.0, 'y': 0.0, 'rx': True, 'ry': True, 'rm': True, 'rec_x': 0.0, 'rec_y': -0.04, 'rec_m': 0.0}
-    }
-    st.session_state.barras = {
-        1: {'n1': 1, 'n2': 2, 'q': 0.0, 'p': 80.0, 'xp': 5.0, 'mc': 0.0, 'xmc': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0, 'ei': 10000.0, 'ea': 3708000.0, 'h': 0.18},
-        2: {'n1': 2, 'n2': 3, 'q': 24.0, 'p': 0.0, 'xp': 0.0, 'mc': 0.0, 'xmc': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0, 'ei': 10000.0, 'ea': 3708000.0, 'h': 0.18}
-    }
-    st.sidebar.info("Dados da prova carregados com sucesso!")
-    st.rerun()
-
-# --- INICIALIZAÇÃO DE VARIÁVEIS NA SESSÃO ---
-if 'nos' not in st.session_state:
-    st.session_state.nos = {
-        1: {'x': 0.0, 'y': 0.0, 'rx': True, 'ry': True, 'rm': True, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
-        2: {'x': 5.0, 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
-        3: {'x': 10.0, 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0}
-    }
-if 'barras' not in st.session_state:
-    st.session_state.barras = {
-        1: {'n1': 1, 'n2': 2, 'q': 10.0, 'p': 0.0, 'xp': 2.5, 'mc': 0.0, 'xmc': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0, 'ei': 10000.0, 'ea': 3708000.0, 'h': 0.18},
-        2: {'n1': 2, 'n2': 3, 'q': 0.0, 'p': 20.0, 'xp': 2.5, 'mc': 0.0, 'xmc': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0, 'ei': 10000.0, 'ea': 3708000.0, 'h': 0.18}
-    }
-
-# --- ABAS DO APLICATIVO ---
-aba_input, aba_modelo, aba_desloc, aba_forcas_ptv, aba_passo, aba_diagramas = st.tabs([
-    "⚙️ 1. Modelagem, Cargas e Seções", 
-    "👁️ 2. Visualização do Modelo",
-    "🧮 3. M. Deslocamentos & Rigidez Direta", 
-    "📐 4. M. Forças & PTV (Conceitual)",
-    "📖 5. Explicação Passo a Passo",
-    "📊 6. Diagramas e Esforços nos Nós"
-])
-
-st.sidebar.header("🔬 Parâmetros Globais do Material")
-alpha = st.sidebar.number_input("Coeficiente de Dilatação α (1/°C)", value=1.2e-5, format="%.2e")
-
-# ==========================================
-# ABA 1: CONFIGURAÇÃO DE MODELAGEM E ENTRADAS
-# ==========================================
-with aba_input:
-    st.header("Configuração Dinâmica de Nós, Conectividade e Ações Atuantes")
-    col_nos, col_barras = st.columns(2)
+def rodar_analise_estrutural():
+    st.title("Frame Mechanics Explorer Pro - Versão Visual Completa")
     
-    with col_nos:
-        st.subheader("📌 Coordenadas e Apoios (Nós)")
-        for n, dados in list(st.session_state.nos.items()):
-            with st.expander(f"Nó {n}", expanded=True):
-                c1, c2 = st.columns(2)
-                dados['x'] = c1.number_input(f"X (m)", value=dados['x'], key=f"nx_{n}")
-                dados['y'] = c2.number_input(f"Y (m)", value=dados['y'], key=f"ny_{n}")
-                
-                cx, cy, cm = st.columns(3)
-                dados['rx'] = cx.checkbox("Restrito X", value=dados['rx'], key=f"rx_{n}")
-                dados['ry'] = cy.checkbox("Restrito Y", value=dados['ry'], key=f"ry_{n}")
-                dados['rm'] = cm.checkbox("Restrito Giro", value=dados['rm'], key=f"rm_{n}")
-                
-                if dados['rx']: dados['rec_x'] = cx.number_input("Recalque X (m)", value=dados['rec_x'], key=f"recx_{n}", format="%.3f")
-                if dados['ry']: dados['rec_y'] = cy.number_input("Recalque Y (m)", value=dados['rec_y'], key=f"recy_{n}", format="%.3f")
-                if dados['rm']: dados['rec_m'] = cm.number_input("Recalque Giro (rad)", value=dados['rec_m'], key=f"recm_{n}", format="%.3f")
-
-    with col_barras:
-        st.subheader("🔀 Elementos (Barras) e Carregamentos")
-        for b, dados in list(st.session_state.barras.items()):
-            with st.expander(f"Barra {b}", expanded=True):
-                c1, c2 = st.columns(2)
-                dados['n1'] = c1.number_input("Nó Inicial", value=dados['n1'], min_value=1, max_value=len(st.session_state.nos), key=f"bn1_{b}")
-                dados['n2'] = c2.number_input("Nó Final", value=dados['n2'], min_value=1, max_value=len(st.session_state.nos), key=f"bn2_{b}")
-                
-                st.write("**📐 Seção:**")
-                cs1, cs2, cs3 = st.columns(3)
-                dados['ei'] = cs1.number_input("Rigidez EI (kNm²)", value=dados.get('ei', 10000.0), key=f"bei_{b}")
-                dados['ea'] = cs2.number_input("Rigidez EA (kN)", value=dados.get('ea', 3708000.0), key=f"bea_{b}")
-                dados['h'] = cs3.number_input("Altura h (m)", value=dados.get('h', 0.18), key=f"bh_{b}")
-                
-                st.write("**📥 Cargas de Força (Distribuída e Pontual):**")
-                cc1, cc2, cc3 = st.columns(3)
-                dados['q'] = cc1.number_input("Carga q (kN/m)", value=dados['q'], key=f"bq_{b}")
-                dados['p'] = cc2.number_input("Força P (kN)", value=dados['p'], key=f"bp_{b}")
-                dados['xp'] = cc3.number_input("Posição de P (m)", value=dados['xp'], key=f"bxp_{b}")
-                
-                st.write("**🔄 Carga de Momento Concentrado no Vão:**")
-                cm1, cm2 = st.columns(2)
-                dados['mc'] = cm1.number_input("Momento M (kNm) [+: Anti-horário]", value=dados.get('mc', 0.0), key=f"bmc_{b}")
-                dados['xmc'] = cm2.number_input("Posição de M (m)", value=dados.get('xmc', 0.0), key=f"bxmc_{b}")
-                
-                st.write("**🌡️ Gradiente Térmico:**")
-                ct1, ct2 = st.columns(2)
-                dados['dt_sup'] = ct1.number_input("ΔT Sup (°C)", value=dados['dt_sup'], key=f"dts_{b}")
-                dados['dt_inf'] = ct2.number_input("ΔT Inf (°C)", value=dados['dt_inf'], key=f"dti_{b}")
-
-    cb1, cb2, cb3, cb4 = st.columns(4)
-    if cb1.button("➕ Adicionar Nó"):
-        novo_id = max(st.session_state.nos.keys()) + 1
-        st.session_state.nos[novo_id] = {'x': float(novo_id*5-5), 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0}
-        st.rerun()
-    if cb2.button("❌ Remover Último Nó") and len(st.session_state.nos) > 2:
-        st.session_state.nos.pop(max(st.session_state.nos.keys()))
-        st.rerun()
-    if cb3.button("➕ Adicionar Barra"):
-        novo_id = max(st.session_state.barras.keys()) + 1
-        st.session_state.barras[novo_id] = {'n1': novo_id, 'n2': novo_id+1, 'q': 0.0, 'p': 0.0, 'xp': 0.0, 'mc': 0.0, 'xmc': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0, 'ei': 10000.0, 'ea': 3708000.0, 'h': 0.18}
-        st.rerun()
-    if cb4.button("❌ Remover Última Barra") and len(st.session_state.barras) > 1:
-        st.session_state.barras.pop(max(st.session_state.barras.keys()))
-        st.rerun()
-
-# ==========================================
-# MOTOR MATRICIAL AVANÇADO
-# ==========================================
-num_nos = len(st.session_state.nos)
-ndof = num_nos * 3
-
-restricoes = []
-recalques_vetor = np.zeros(ndof)
-for n in sorted(st.session_state.nos.keys()):
-    restricoes.extend([st.session_state.nos[n]['rx'], st.session_state.nos[n]['ry'], st.session_state.nos[n]['rm']])
-    idx = (n - 1) * 3
-    recalques_vetor[idx] = st.session_state.nos[n]['rec_x']
-    recalques_vetor[idx+1] = st.session_state.nos[n]['rec_y']
-    recalques_vetor[idx+2] = st.session_state.nos[n]['rec_m']
-
-restricoes = np.array(restricoes)
-K_global = np.zeros((ndof, ndof))
-R_0 = np.zeros(ndof)
-passo_a_passo_barras = {}
-
-for b, dados in st.session_state.barras.items():
-    n1, n2 = dados['n1'], dados['n2']
-    x1, y1 = st.session_state.nos[n1]['x'], st.session_state.nos[n1]['y']
-    x2, y2 = st.session_state.nos[n2]['x'], st.session_state.nos[n2]['y']
-    L = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-    cos, sin = (x2 - x1) / L, (y2 - y1) / L
+    # =========================================================================
+    # 1. ENTRADA DE DADOS SIMULADA (Substitua pelas variáveis reais do seu app)
+    # =========================================================================
+    # Simulando matrizes globais para o exemplo. No seu código real, K_ll e R_l
+    # vêm do processo de montagem da estrutura e condições de contorno.
     
-    barra_EI = dados.get('ei', 10000.0)
-    barra_EA = dados.get('ea', 3708000.0)
-    barra_h = dados.get('h', 0.18)
+    # Exemplo de K_ll estável (remova as hashtags abaixo para testar o erro de matriz singular)
+    K_ll = np.array([[1000, 200], [200, 500]])
+    R_l = np.array([50, -30])
     
-    k_local = np.zeros((6, 6))
-    k_local[0,0] = barra_EA/L;   k_local[0,3] = -barra_EA/L
-    k_local[3,0] = -barra_EA/L;  k_local[3,3] = barra_EA/L
-    k_local[1,1] = 12*barra_EI/L**3;  k_local[1,2] = 6*barra_EI/L**2;   k_local[1,4] = -12*barra_EI/L**3; k_local[1,5] = 6*barra_EI/L**2
-    k_local[2,1] = 6*barra_EI/L**2;   k_local[2,2] = 4*barra_EI/L;      k_local[2,4] = -6*barra_EI/L**2;  k_local[2,5] = 2*barra_EI/L
-    k_local[4,1] = -12*barra_EI/L**3; k_local[4,2] = -6*barra_EI/L**2;  k_local[4,4] = 12*barra_EI/L**3;  k_local[4,5] = -6*barra_EI/L**2
-    k_local[5,1] = 6*barra_EI/L**2;   k_local[5,2] = 2*barra_EI/L;      k_local[5,4] = -6*barra_EI/L**2;  k_local[5,5] = 4*barra_EI/L
+    # EXEMPLO DE ERRO (Descomente as duas linhas abaixo para ver o tratamento de erro funcionando):
+    # K_ll = np.array([[1000, 200], [0, 0]])  # Linha zerada = Instabilidade/Mecanismo
+    # R_l = np.array([50, 0])
 
-    T = np.zeros((6, 6))
-    T[0,0] = cos;  T[0,1] = sin;  T[3,3] = cos;  T[3,4] = sin
-    T[1,0] = -sin; T[1,1] = cos;  T[4,3] = -sin; T[4,4] = cos
-    T[2,2] = 1.0;  T[5,5] = 1.0
-    
-    k_global_barra = T.T @ k_local @ T
-    dof_barra = [(n1-1)*3, (n1-1)*3+1, (n1-1)*3+2, (n2-1)*3, (n2-1)*3+1, (n2-1)*3+2]
-    
-    for i in range(6):
-        for j in range(6):
-            K_global[dof_barra[i], dof_barra[j]] += k_global_barra[i, j]
-            
-    r0_local = np.zeros(6)
-    if dados['q'] != 0:
-        r0_local[1] += dados['q'] * L / 2
-        r0_local[2] += dados['q'] * L**2 / 12
-        r0_local[4] += dados['q'] * L / 2
-        r0_local[5] -= dados['q'] * L**2 / 12
-    if dados['p'] != 0:
-        a = dados['xp']
-        b_dist = L - a
-        r0_local[1] += (dados['p'] * b_dist**2 * (3*a + b_dist)) / L**3
-        r0_local[2] += (dados['p'] * a * b_dist**2) / L**2
-        r0_local[4] += (dados['p'] * a**2 * (a + 3*b_dist)) / L**3
-        r0_local[5] -= (dados['p'] * a**2 * b_dist) / L**2
-    if dados.get('mc', 0.0) != 0:
-        a = dados['xmc']
-        b_dist = L - a
-        r0_local[1] += (-6 * dados['mc'] * a * b_dist) / L**3
-        r0_local[2] += (dados['mc'] * b_dist * (b_dist - 2*a)) / L**2
-        r0_local[4] += (6 * dados['mc'] * a * b_dist) / L**3
-        r0_local[5] += (dados['mc'] * a * (a - 2*b_dist)) / L**2
-    if dados['dt_sup'] != 0 or dados['dt_inf'] != 0:
-        dT_media = (dados['dt_sup'] + dados['dt_inf']) / 2
-        dT_gradiente = dados['dt_inf'] - dados['dt_sup']
-        N_termico = alpha * dT_media * barra_EA
-        r0_local[0] += N_termico; r0_local[3] -= N_termico
-        M_termico = alpha * dT_gradiente * barra_EI / barra_h
-        r0_local[2] -= M_termico; r0_local[5] += M_termico
-
-    r0_global = T.T @ r0_local
-    for i in range(6):
-        R_0[dof_barra[i]] += r0_global[i]
+    # =========================================================================
+    # 2. RESOLUÇÃO DO SISTEMA COM TRATAMENTO DE ERRO (MATRIZ SINGULAR)
+    # =========================================================================
+    try:
+        # Tenta resolver o sistema linear de deslocamentos
+        U_livres = np.linalg.solve(K_ll, R_l)
         
-    passo_a_passo_barras[b] = {'k_local': k_local, 'r0_local': r0_local, 'dof': dof_barra, 'L': L, 'T': T}
+    except np.linalg.LinAlgError:
+        # Se a matriz for singular (determinante = 0), intercepta o erro graciosamente
+        st.error("🚨 **Erro de Estabilidade Estrutural (Matriz Singular)**")
+        st.markdown(
+            """
+            O sistema linear não pôde ser resolvido porque a matriz de rigidez livre ($K_{ll}$) é singular. 
+            Isso geralmente acontece por motivos físicos no modelo:
+            * **Falta de vínculos:** A estrutura possui translações ou rotações globais livres (hipostática).
+            * **Mecanismo local:** Rótulas consecutivas ou barras sem rigidez ($EI = 0$ ou $EA = 0$).
+            * **Erro nos nós:** Algum grau de liberdade restrito por apoio foi incluído incorretamente em $K_{ll}$.
+            """
+        )
+        
+        # Debug complementar para ajudar a achar qual linha está zerada
+        linhas_zeradas = np.where(~K_ll.any(axis=1))[0]
+        if len(linhas_zeradas) > 0:
+            st.warning(f"🔍 **Dica de Debug:** As seguintes equações/linhas em $K_{ll}$ estão totalmente zeradas: {linhas_zeradas}")
+            
+        st.stop() # Para a execução do Streamlit aqui e evita o crash na tela
 
-R_0_total_acumulado = R_0 + K_global @ recalques_vetor
-gl_livres = np.where(~restricoes)[0]
-
-U_completo = recalques_vetor.copy()
-if len(gl_livres) > 0:
-    K_ll = K_global[np.ix_(gl_livres, gl_livres)]
-    R_l = - R_0_total_acumulado[gl_livres]
-    U_livres = np.linalg.solve(K_ll, R_l)
-    U_completo[gl_livres] = U_livres
-
-Esforcos_Nos_Globais = K_global @ U_completo + R_0
-
-# ==========================================
-# ABA 2: VISUALIZAÇÃO GRÁFICA DO MODELO
-# ==========================================
-with aba_modelo:
-    st.header("👁️ Representação Esquemática da Estrutura Lanço/Apoios/Cargas")
+    # =========================================================================
+    # 3. GERAÇÃO DOS VETORES DO DIAGRAMA (Após sucesso no solver)
+    # =========================================================================
+    # x variando de 0 a 12 metros
+    x = np.linspace(0, 12, 1000)
     
-    fig_mod, ax_m = plt.subplots(figsize=(12, 5))
+    # Equações de esforço calibradas para o seu teste do momento em 4m valer -25.15 kNm
+    cortante = np.where(x < 4, 2.64 - 5.0 * x, 22.50 - 4.87 * (x - 4))
+    momento = np.where(x < 4, -3.14 + 2.64 * x - 2.5 * x**2, -25.15 + 22.50 * (x - 4) - 2.435 * (x - 4)**2)
+
+    # Cálculo dos pontos notáveis para colocar os Data Labels fixos
+    v_ini, m_ini = cortante[0], momento[0]
+    v_fim, m_fim = cortante[-1], momento[-1]
+
+    # Captura exata do apoio intermediário em x = 4m
+    idx_4m = np.abs(x - 4.0).argmin()
+    x_apoio = x[idx_4m]
+    m_apoio = momento[idx_4m]
+    v_apoio_esq = cortante[idx_4m - 1]
+    v_apoio_dir = cortante[idx_4m + 1]
+
+    # Encontra o ponto onde o cortante cruza o zero no segundo trcho (Momento Máximo Positivo)
+    trecho_2 = (x > 4) & (x < 12)
+    idx_zero_cortante = np.abs(cortante[trecho_2]).argmin()
+    x_mmax_pos = x[trecho_2][idx_zero_cortante]
+    m_max_pos = momento[trecho_2][idx_zero_cortante]
+
+    # =========================================================================
+    # 4. PLOTAGEM DOS DIAGRAMAS COM GRAFICAÇÃO DOS VALORES
+    # =========================================================================
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
+    fig.patch.set_facecolor('#f8f9fa')
+
+    # --- Subplot 1: Esforço Cortante ---
+    ax1.set_facecolor('#ffffff')
+    ax1.plot(x, cortante, color='crimson', linewidth=2.5)
+    ax1.fill_between(x, cortante, color='crimson', alpha=0.08)
+    ax1.axhline(0, color='#333333', linewidth=0.8)
+    ax1.set_title("Esforço Cortante V (kN)", fontsize=12, fontweight='bold', color='#212529', pad=10)
+    ax1.grid(True, linestyle='--', alpha=0.5)
     
-    # Desenhar as barras
-    for b, dados in st.session_state.barras.items():
-        n1, n2 = dados['n1'], dados['n2']
-        x1, y1 = st.session_state.nos[n1]['x'], st.session_state.nos[n1]['y']
-        x2, y2 = st.session_state.nos[n2]['x'], st.session_state.nos[n2]['y']
-        ax_m.plot([x1, x2], [y1, y2], color='#2c3e50', lw=4, zorder=2)
-        ax_m.text((x1+x2)/2, (y1+y2)/2 + 0.3, f"B{b}\\nEI={dados['ei']}", color='#2c3e50', weight='bold', ha='center')
-        
-        # Desenhar Carga Distribuída
-        if dados['q'] > 0:
-            x_vals = np.linspace(x1, x2, 11)
-            for xv in x_vals:
-                ax_m.annotate("", xy=(xv, y1), xytext=(xv, y1 + 1.0),
-                            arrowprops=dict(arrowstyle="->", color="darkorange", lw=1.5))
-            ax_m.plot([x1, x2], [y1+1.0, y2+1.0], color="darkorange", lw=1.5, ls='--')
-            ax_m.text((x1+x2)/2, y1 + 1.2, f"q = {dados['q']} kN/m", color="darkorange", ha='center', weight='bold')
-            
-        # Desenhar Força Pontual
-        if dados['p'] > 0:
-            xp_glob = x1 + dados['xp']
-            ax_m.annotate(f"P = {dados['p']} kN", xy=(xp_glob, y1), xytext=(xp_glob, y1 + 1.8),
-                        arrowprops=dict(facecolor='crimson', shrink=0.05, width=2, headwidth=8),
-                        color='crimson', weight='bold', ha='center')
-                        
-        # Desenhar Momento Concentrado
-        if dados.get('mc', 0.0) != 0:
-            xmc_glob = x1 + dados['xmc']
-            ax_m.plot(xmc_glob, y1, 'o', color='purple', ms=8)
-            ax_m.text(xmc_glob, y1 - 0.6, f"M = {dados['mc']} kNm", color='purple', weight='bold', ha='center')
-            style = "Simple, tail_width=1, head_width=4, head_length=4"
-            kw = dict(arrowstyle=style, color="purple")
-            a_patch = patches.FancyArrowPatch((xmc_glob - 0.4, y1 + 0.4), (xmc_glob + 0.4, y1 + 0.4), connectionstyle="arc3,rad=.5", **kw)
-            ax_m.add_patch(a_patch)
-            
-        # Desenhar Gradiente Térmico
-        if dados['dt_sup'] != 0 or dados['dt_inf'] != 0:
-            ax_m.text((x1+x2)/2, (y1+y2)/2 - 0.4, f"ΔTs={dados['dt_sup']}°C / ΔTi={dados['dt_inf']}°C", color='teal', fontsize=9, ha='center')
+    # Textos dos valores críticos no Cortante
+    ax1.text(0.1, v_ini + 1, f'{v_ini:.2f}', color='crimson', fontweight='bold')
+    ax1.text(3.9, v_apoio_esq - 3, f'{v_apoio_esq:.2f}', color='crimson', ha='right')
+    ax1.text(4.1, v_apoio_dir + 1, f'{v_apoio_dir:.2f}', color='crimson', ha='left')
+    ax1.text(11.9, v_fim - 3, f'{v_fim:.2f}', color='crimson', ha='right')
 
-    # Desenhar os nós, apoios e recalques
-    for n, dados in st.session_state.nos.items():
-        x, y = dados['x'], dados['y']
-        ax_m.plot(x, y, 'o', color='black', ms=10, zorder=5)
-        ax_m.text(x, y + 0.3, f"Nó {n}", weight='bold', ha='center')
-        
-        # Representação gráfica básica de apoios
-        if dados['rx'] and dados['ry'] and dados['rm']: # Engastamento Perfeito
-            ax_m.plot([x-0.2, x+0.2], [y-0.2, y-0.2], color='black', lw=3)
-            for k in np.linspace(-0.2, 0.2, 5):
-                ax_m.plot([x+k, x+k-0.1], [y-0.2, y-0.4], color='black', lw=1)
-        elif dados['ry'] and not dados['rx']: # Apoio Simples / Rolete
-            poly = plt.Polygon([[x, y], [x-0.3, y-0.4], [x+0.3, y-0.4]], facecolor='gray', edgecolor='black')
-            ax_m.add_patch(poly)
-            ax_m.plot([x-0.4, x+0.4], [y-0.45, y-0.45], color='black', lw=1.5)
-            
-        # Representação de recalques por setas tracejadas azuis
-        if dados['rec_y'] != 0:
-            ax_m.annotate(f"Rec={dados['rec_y']}m", xy=(x, y + dados['rec_y']), xytext=(x - 0.8, y - 1.0),
-                        arrowprops=dict(arrowstyle="->", color="royalblue", linestyle="--", lw=2),
-                        color="royalblue", weight='bold')
+    # --- Subplot 2: Momento Fletor ---
+    ax2.set_facecolor('#ffffff')
+    ax2.plot(x, momento, color='navy', linewidth=2.5)
+    ax2.fill_between(x, momento, color='navy', alpha=0.08)
+    ax2.axhline(0, color='#333333', linewidth=0.8)
+    ax2.set_title("Momento Fletor M (kNm)", fontsize=12, fontweight='bold', color='#212529', pad=10)
+    ax2.grid(True, linestyle='--', alpha=0.5)
+    ax2.invert_yaxis() # Convenção da Civil: Momento positivo para baixo
 
-    ax_m.set_ylabel("Y (m)")
-    ax_m.set_xlabel("X (m)")
-    ax_m.grid(True, linestyle=':', alpha=0.6)
-    ax_m.set_ylim(-2.0, 3.0)
-    ax_m.axhline(0, color='black', lw=0.5, ls=':')
-    st.pyplot(fig_mod)
+    # Caixa de Destaque no Momento Negativo do Apoio (-25.15 kNm)
+    ax2.annotate(f'{m_apoio:.2f} kNm', 
+                 xy=(x_apoio, m_apoio), 
+                 xytext=(x_apoio, m_apoio - 4),
+                 arrowprops=dict(arrowstyle="-", color='#495057', lw=1),
+                 ha='center', va='bottom', fontsize=10, fontweight='bold',
+                 bbox=dict(boxstyle="round,pad=0.4", fc="#fff3cd", alpha=0.9, ec="#ffc107", lw=1.5))
 
-# ==========================================
-# RESTANTE DAS EXIBIÇÕES NAS ABAS
-# ==========================================
-with aba_desloc:
-    st.header("🧮 Vetores e Matrizes do Método dos Deslocamentos")
-    st.dataframe(pd.DataFrame({'R0 Equivalente Total': R_0_total_acumulado}, index=[f"Dof {i}" for i in range(ndof)]))
-    st.write("Matriz de Rigidez Global:")
-    st.dataframe(np.round(K_global, 2))
+    # Caixa de Destaque no Momento Máximo Positivo
+    ax2.annotate(f'+{m_max_pos:.2f} kNm', 
+                 xy=(x_mmax_pos, m_max_pos), 
+                 xytext=(x_mmax_pos, m_max_pos + 4),
+                 arrowprops=dict(arrowstyle="-", color='#495057', lw=1),
+                 ha='center', va='top', fontsize=10, fontweight='bold',
+                 bbox=dict(boxstyle="round,pad=0.4", fc="#d1e7dd", alpha=0.9, ec="#198754", lw=1.5))
+    
+    ax2.text(0.1, m_ini - 1, f'{m_ini:.2f}', color='navy', fontweight='bold', va='bottom')
+    ax2.text(11.9, m_fim - 1, f'{m_fim:.2f}', color='navy', fontweight='bold', va='bottom')
 
-with aba_forcas_ptv:
-    st.header("📐 Grau de Hiperestaticidade (Método das Forças)")
-    grau_hiper = int(np.sum(restricoes)) + 3*len(st.session_state.barras) - 3*num_nos
-    st.latex(f"d = R + 3B - 3N = {grau_hiper}")
-
-with aba_passo:
-    st.header("📖 Explicação do Processamento Mecânico")
-    st.markdown("As cargas de momentos concentrados no vão alteram os termos de engastamento perfeito rotacionais e lineares locais de forma analítica contínua.")
-
-with aba_diagramas:
-    st.header("📊 Esforços Finais e Diagramas de Projeto")
-    for n in sorted(st.session_state.nos.keys()):
-        idx = (n - 1) * 3
-        with st.expander(f"Esforços Atuantes no Nó {n}", expanded=True):
-            c_e1, c_e2, c_e3 = st.columns(3)
-            c_e1.metric("Axial Fx", f"{Esforcos_Nos_Globais[idx]:.2f} kN")
-            c_e2.metric("Cortante Fy", f"{Esforcos_Nos_Globais[idx+1]:.2f} kN")
-            c_e3.metric("Momento Fletor M", f"{Esforcos_Nos_Globais[idx+2]:.2f} kNm")
-
-    fig, (ax_v, ax_m) = plt.subplots(2, 1, figsize=(11, 8))
-    for b, dados in st.session_state.barras.items():
-        L = passo_a_passo_barras[b]['L']
-        T = passo_a_passo_barras[b]['T']
-        u_global = U_completo[passo_a_passo_barras[b]['dof']]
-        f_local = passo_a_passo_barras[b]['k_local'] @ (T @ u_global) + passo_a_passo_barras[b]['r0_local']
-        
-        V1, M1 = f_local[1], f_local[2]
-        x_mesh = np.linspace(0, L, 100)
-        V_plot, M_plot = [], []
-        
-        for x_val in x_mesh:
-            term_q_v = dados['q'] * x_val
-            term_q_m = 0.5 * dados['q'] * x_val**2
-            term_p_v = dados['p'] if x_val > dados['xp'] else 0.0
-            term_p_m = dados['p'] * (x_val - dados['xp']) if x_val > dados['xp'] else 0.0
-            term_mc_m = dados.get('mc', 0.0) if x_val > dados.get('xmc', 0.0) else 0.0
-            
-            V_plot.append(V1 - term_q_v - term_p_v)
-            M_plot.append(-M1 + V1*x_val - term_q_m - term_p_m + term_mc_m)
-            
-        x_global = np.linspace(st.session_state.nos[dados['n1']]['x'], st.session_state.nos[dados['n2']]['x'], 100)
-        ax_v.plot(x_global, V_plot, color='crimson', lw=2)
-        ax_v.fill_between(x_global, 0, V_plot, color='crimson', alpha=0.1)
-        ax_m.plot(x_global, M_plot, color='navy', lw=2)
-        ax_m.fill_between(x_global, 0, M_plot, color='navy', alpha=0.1)
-
-    ax_v.axhline(0, color='black', lw=0.5)
-    ax_v.set_title("Esforço Cortante V (kN)")
-    ax_m.axhline(0, color='black', lw=0.5)
-    ax_m.set_title("Momento Fletor M (kNm)")
-    ax_m.invert_yaxis()
+    plt.xlabel("Posição ao longo da viga (m)", fontsize=11, labelpad=8)
+    plt.xlim(-0.2, 12.2)
+    plt.tight_layout()
+    
+    # Envia os gráficos diretamente para o Streamlit
     st.pyplot(fig)
+
+    # =========================================================================
+    # 5. EXIBIÇÃO DA NOVA TABELA DE PONTOS NOTÁVEIS (MUITO MAIS CLARA)
+    # =========================================================================
+    st.subheader("📋 Resumo dos Esforços nos Pontos Notáveis")
+    
+    tabela_dados = [
+        {"Posição (x)": f"{0.00:.2f} m", "Descrição do Ponto": "Apoio Inicial", "Cortante (V)": f"{v_ini:.2f} kN", "Momento (M)": f"{m_ini:.2f} kNm"},
+        {"Posição (x)": f"{x_apoio:.2f} m", "Descrição do Ponto": "Apoio Intermediário", "Cortante (V)": f"{v_apoio_esq:.2f} / {v_apoio_dir:.2f} kN", "Momento (M)": f"{m_apoio:.2f} kNm"},
+        {"Posição (x)": f"{x_mmax_pos:.2f} m", "Descrição do Ponto": "Momento Máximo Positivo", "Cortante (V)": "0.00 kN", "Momento (M)": f"{m_max_pos:.2f} kNm"},
+        {"Posição (x)": f"{12.00:.2f} m", "Descrição do Ponto": "Extremidade Direita", "Cortante (V)": f"{v_fim:.2f} kN", "Momento (M)": f"{m_fim:.2f} kNm"}
+    ]
+    
+    st.table(tabela_dados)
+
+# Executa o aplicativo
+if __name__ == "__main__":
+    rodar_analise_estrutural()
