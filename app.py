@@ -2,11 +2,12 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import matplotlib.patches as patches
 
 st.set_page_config(page_title="Solver Estrutural Universitário Pro", layout="wide")
 
-st.title("🏗️ Frame Mechanics Explorer Pro - Versão Avançada")
-st.write("Simulador flexível com suporte a EI/EA distintos e cargas de Momento Concentrado ao longo do vão.")
+st.title("🏗️ Frame Mechanics Explorer Pro - Versão Visual Completa")
+st.write("Simulador flexível com suporte a EI/EA distintos, cargas de Momento Concentrado e representação gráfica da estrutura.")
 
 # --- ATALHO DE CALIBRAÇÃO (CARREGA O SEU EXERCÍCIO COMO MODELO) ---
 if st.button("🚀 Carregar Cenário de Teste (Questão da Prova)"):
@@ -36,12 +37,13 @@ if 'barras' not in st.session_state:
     }
 
 # --- ABAS DO APLICATIVO ---
-aba_input, aba_desloc, aba_forcas_ptv, aba_passo, aba_diagramas = st.tabs([
+aba_input, aba_modelo, aba_desloc, aba_forcas_ptv, aba_passo, aba_diagramas = st.tabs([
     "⚙️ 1. Modelagem, Cargas e Seções", 
-    "🧮 2. M. Deslocamentos & Rigidez Direta", 
-    "📐 3. M. Forças & PTV (Conceitual)",
-    "📖 4. Explicação Passo a Passo",
-    "📊 5. Diagramas e Esforços nos Nós"
+    "👁️ 2. Visualização do Modelo",
+    "🧮 3. M. Deslocamentos & Rigidez Direta", 
+    "📐 4. M. Forças & PTV (Conceitual)",
+    "📖 5. Explicação Passo a Passo",
+    "📊 6. Diagramas e Esforços nos Nós"
 ])
 
 st.sidebar.header("🔬 Parâmetros Globais do Material")
@@ -118,7 +120,7 @@ with aba_input:
         st.rerun()
 
 # ==========================================
-# MOTOR MATRICIAL AVANÇADO COMPLETAMENTE ATUALIZADO
+# MOTOR MATRICIAL AVANÇADO
 # ==========================================
 num_nos = len(st.session_state.nos)
 ndof = num_nos * 3
@@ -169,13 +171,11 @@ for b, dados in st.session_state.barras.items():
             K_global[dof_barra[i], dof_barra[j]] += k_global_barra[i, j]
             
     r0_local = np.zeros(6)
-    # 1. Carga Distribuída
     if dados['q'] != 0:
         r0_local[1] += dados['q'] * L / 2
         r0_local[2] += dados['q'] * L**2 / 12
         r0_local[4] += dados['q'] * L / 2
         r0_local[5] -= dados['q'] * L**2 / 12
-    # 2. Carga Pontual
     if dados['p'] != 0:
         a = dados['xp']
         b_dist = L - a
@@ -183,16 +183,13 @@ for b, dados in st.session_state.barras.items():
         r0_local[2] += (dados['p'] * a * b_dist**2) / L**2
         r0_local[4] += (dados['p'] * a**2 * (a + 3*b_dist)) / L**3
         r0_local[5] -= (dados['p'] * a**2 * b_dist) / L**2
-    # 3. Momento Concentrado no Vão (M_c)
     if dados.get('mc', 0.0) != 0:
         a = dados['xmc']
         b_dist = L - a
-        # Reações de engastamento perfeito para momento concentrado interno
         r0_local[1] += (-6 * dados['mc'] * a * b_dist) / L**3
         r0_local[2] += (dados['mc'] * b_dist * (b_dist - 2*a)) / L**2
         r0_local[4] += (6 * dados['mc'] * a * b_dist) / L**3
         r0_local[5] += (dados['mc'] * a * (a - 2*b_dist)) / L**2
-    # 4. Efeito Térmico
     if dados['dt_sup'] != 0 or dados['dt_inf'] != 0:
         dT_media = (dados['dt_sup'] + dados['dt_inf']) / 2
         dT_gradiente = dados['dt_inf'] - dados['dt_sup']
@@ -220,7 +217,82 @@ if len(gl_livres) > 0:
 Esforcos_Nos_Globais = K_global @ U_completo + R_0
 
 # ==========================================
-# EXIBIÇÃO DE RESULTADOS NAS ABAS
+# ABA 2: VISUALIZAÇÃO GRÁFICA DO MODELO
+# ==========================================
+with aba_modelo:
+    st.header("👁️ Representação Esquemática da Estrutura Lanço/Apoios/Cargas")
+    
+    fig_mod, ax_m = plt.subplots(figsize=(12, 5))
+    
+    # Desenhar as barras
+    for b, dados in st.session_state.barras.items():
+        n1, n2 = dados['n1'], dados['n2']
+        x1, y1 = st.session_state.nos[n1]['x'], st.session_state.nos[n1]['y']
+        x2, y2 = st.session_state.nos[n2]['x'], st.session_state.nos[n2]['y']
+        ax_m.plot([x1, x2], [y1, y2], color='#2c3e50', lw=4, zorder=2)
+        ax_m.text((x1+x2)/2, (y1+y2)/2 + 0.3, f"B{b}\\nEI={dados['ei']}", color='#2c3e50', weight='bold', ha='center')
+        
+        # Desenhar Carga Distribuída
+        if dados['q'] > 0:
+            x_vals = np.linspace(x1, x2, 11)
+            for xv in x_vals:
+                ax_m.annotate("", xy=(xv, y1), xytext=(xv, y1 + 1.0),
+                            arrowprops=dict(arrowstyle="->", color="darkorange", lw=1.5))
+            ax_m.plot([x1, x2], [y1+1.0, y2+1.0], color="darkorange", lw=1.5, ls='--')
+            ax_m.text((x1+x2)/2, y1 + 1.2, f"q = {dados['q']} kN/m", color="darkorange", ha='center', weight='bold')
+            
+        # Desenhar Força Pontual
+        if dados['p'] > 0:
+            xp_glob = x1 + dados['xp']
+            ax_m.annotate(f"P = {dados['p']} kN", xy=(xp_glob, y1), xytext=(xp_glob, y1 + 1.8),
+                        arrowprops=dict(facecolor='crimson', shrink=0.05, width=2, headwidth=8),
+                        color='crimson', weight='bold', ha='center')
+                        
+        # Desenhar Momento Concentrado
+        if dados.get('mc', 0.0) != 0:
+            xmc_glob = x1 + dados['xmc']
+            ax_m.plot(xmc_glob, y1, 'o', color='purple', ms=8)
+            ax_m.text(xmc_glob, y1 - 0.6, f"M = {dados['mc']} kNm", color='purple', weight='bold', ha='center')
+            style = "Simple, tail_width=1, head_width=4, head_length=4"
+            kw = dict(arrowstyle=style, color="purple")
+            a_patch = patches.FancyArrowPatch((xmc_glob - 0.4, y1 + 0.4), (xmc_glob + 0.4, y1 + 0.4), connectionstyle="arc3,rad=.5", **kw)
+            ax_m.add_patch(a_patch)
+            
+        # Desenhar Gradiente Térmico
+        if dados['dt_sup'] != 0 or dados['dt_inf'] != 0:
+            ax_m.text((x1+x2)/2, (y1+y2)/2 - 0.4, f"ΔTs={dados['dt_sup']}°C / ΔTi={dados['dt_inf']}°C", color='teal', fontsize=9, ha='center')
+
+    # Desenhar os nós, apoios e recalques
+    for n, dados in st.session_state.nos.items():
+        x, y = dados['x'], dados['y']
+        ax_m.plot(x, y, 'o', color='black', ms=10, zorder=5)
+        ax_m.text(x, y + 0.3, f"Nó {n}", weight='bold', ha='center')
+        
+        # Representação gráfica básica de apoios
+        if dados['rx'] and dados['ry'] and dados['rm']: # Engastamento Perfeito
+            ax_m.plot([x-0.2, x+0.2], [y-0.2, y-0.2], color='black', lw=3)
+            for k in np.linspace(-0.2, 0.2, 5):
+                ax_m.plot([x+k, x+k-0.1], [y-0.2, y-0.4], color='black', lw=1)
+        elif dados['ry'] and not dados['rx']: # Apoio Simples / Rolete
+            poly = plt.Polygon([[x, y], [x-0.3, y-0.4], [x+0.3, y-0.4]], facecolor='gray', edgecolor='black')
+            ax_m.add_patch(poly)
+            ax_m.plot([x-0.4, x+0.4], [y-0.45, y-0.45], color='black', lw=1.5)
+            
+        # Representação de recalques por setas tracejadas azuis
+        if dados['rec_y'] != 0:
+            ax_m.annotate(f"Rec={dados['rec_y']}m", xy=(x, y + dados['rec_y']), xytext=(x - 0.8, y - 1.0),
+                        arrowprops=dict(arrowstyle="->", color="royalblue", linestyle="--", lw=2),
+                        color="royalblue", weight='bold')
+
+    ax_m.set_ylabel("Y (m)")
+    ax_m.set_xlabel("X (m)")
+    ax_m.grid(True, linestyle=':', alpha=0.6)
+    ax_m.set_ylim(-2.0, 3.0)
+    ax_m.axhline(0, color='black', lw=0.5, ls=':')
+    st.pyplot(fig_mod)
+
+# ==========================================
+# RESTANTE DAS EXIBIÇÕES NAS ABAS
 # ==========================================
 with aba_desloc:
     st.header("🧮 Vetores e Matrizes do Método dos Deslocamentos")
@@ -259,7 +331,6 @@ with aba_diagramas:
         V_plot, M_plot = [], []
         
         for x_val in x_mesh:
-            # Integração cinemática/diagramática com descontinuidade de degrau para o momento concentrado
             term_q_v = dados['q'] * x_val
             term_q_m = 0.5 * dados['q'] * x_val**2
             term_p_v = dados['p'] if x_val > dados['xp'] else 0.0
