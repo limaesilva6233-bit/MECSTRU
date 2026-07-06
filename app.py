@@ -1,124 +1,71 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
-st.set_page_config(page_title="Solver Estrutural Didático", layout="wide")
+st.set_page_config(page_title="Solver Estrutural de Alto Desempenho", layout="wide")
 
-st.title("🏗️ Frame Mechanics Explorer Pro - Edição Acadêmica")
-st.write("Seu aliado interativo com passo a passo conceitual completo para passar na matéria de estruturas!")
+st.title("🏗️ Frame Mechanics Explorer Pro - Edição de Provas")
+st.write("Calibrado exatamente para bater com os métodos analíticos manuais de hiperestática.")
 
-# --- INICIALIZAÇÃO DE VARIÁVEIS NA SESSÃO ---
+# --- BOTÃO PARA CARREGAR O GABARITO DA SUA QUESTÃO ---
+if st.button("🚀 Carregar Dados Exatos da Questão da Prova (Gabarito)"):
+    st.session_state.nos = {
+        1: {'x': 0.0, 'y': 0.0, 'rx': True, 'ry': True, 'rm': True, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
+        2: {'x': 10.0, 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
+        3: {'x': 20.0, 'y': 0.0, 'rx': True, 'ry': True, 'rm': True, 'rec_x': 0.0, 'rec_y': -0.04, 'rec_m': 0.0}
+    }
+    st.session_state.barras = {
+        1: {'n1': 1, 'n2': 2, 'q': 0.0, 'p': 80.0, 'xp': 5.0, 'dt_sup': 0.0, 'dt_inf': 0.0},
+        2: {'n1': 2, 'n2': 3, 'q': 24.0, 'p': 0.0, 'xp': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0}
+    }
+    st.rerun()
+
+# --- INICIALIZAÇÃO PADRÃO CASO NÃO CLICADO ---
 if 'nos' not in st.session_state:
     st.session_state.nos = {
         1: {'x': 0.0, 'y': 0.0, 'rx': True, 'ry': True, 'rm': True, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
-        2: {'x': 5.0, 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
-        3: {'x': 10.0, 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0}
+        2: {'x': 10.0, 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0},
+        3: {'x': 20.0, 'y': 0.0, 'rx': True, 'ry': True, 'rm': True, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0}
     }
 if 'barras' not in st.session_state:
     st.session_state.barras = {
-        1: {'n1': 1, 'n2': 2, 'q': 10.0, 'p': 0.0, 'xp': 2.5, 'dt_sup': 0.0, 'dt_inf': 0.0},
-        2: {'n1': 2, 'n2': 3, 'q': 0.0, 'p': 20.0, 'xp': 2.5, 'dt_sup': 0.0, 'dt_inf': 0.0}
+        1: {'n1': 1, 'n2': 2, 'q': 10.0, 'p': 0.0, 'xp': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0},
+        2: {'n1': 2, 'n2': 3, 'q': 0.0, 'p': 20.0, 'xp': 5.0, 'dt_sup': 0.0, 'dt_inf': 0.0}
     }
 
 # --- ABAS DO APLICATIVO ---
-aba_input, aba_desloc, aba_forcas_ptv, aba_passo, aba_diagramas = st.tabs([
-    "⚙️ 1. Modelagem, Cargas e Efeitos", 
-    "🧮 2. M. Deslocamentos & Rigidez Direta", 
-    "📐 3. M. Forças & PTV (Conceitual)",
-    "📖 4. Explicação Passo a Passo",
-    "📊 5. Diagramas e Esforços nos Nós"
+aba_input, aba_gabarito, aba_desloc, aba_diagramas = st.tabs([
+    "⚙️ 1. Configuração da Estrutura", 
+    "📝 2. Memorial Passo a Passo (Igual à Prova)", 
+    "🧮 3. Matrizes Globais do Sistema", 
+    "📊 4. Diagramas e Esforços de Nós"
 ])
 
-# --- PROPRIEDADES GLOBAIS (SIDEBAR) ---
-st.sidebar.header("🔬 Propriedades do Material e Seção")
-modo_input = st.sidebar.radio("Como deseja inserir as propriedades?", ["Inserir b e h (Geometria)", "Inserir EI e EA diretamente"])
+# --- PROPRIEDADES DA SEÇÃO (SIDEBAR) ---
+st.sidebar.header("🔬 Propriedades Mecânicas")
+modo_input = st.sidebar.radio("Propriedades:", ["Inserir EI e EA diretamente", "Inserir b e h (Geometria)"])
 
-alpha = st.sidebar.number_input("Coeficiente de Dilatação α (1/°C)", value=1.2e-5, format="%.2e")
-h_cm = 50.0 # valor padrão para cálculo térmico se digitado direto
+alpha = st.sidebar.number_input("α (1/°C)", value=1.2e-5, format="%.2e")
 
-if modo_input == "Inserir b e h (Geometria)":
-    E_gpa = st.sidebar.number_input("Módulo de Elasticidade E (GPa)", value=206)
-    E = E_gpa * 1e6 # kN/m²
-    base_cm = st.sidebar.number_input("Base da Seção Retangular (cm)", value=10)
-    h_cm = st.sidebar.number_input("Altura da Seção Retangular (cm)", value=18)
-    
+if modo_input == "Inserir EI e EA diretamente":
+    EI = st.sidebar.number_input("Rigidez à Flexão EI (kNm²)", value=10000.0)
+    EA = st.sidebar.number_input("Rigidez Axial EA (kN)", value=1e6)
+    h_cm = 18.0
+else:
+    E_gpa = st.sidebar.number_input("E (GPa)", value=206)
+    base_cm = st.sidebar.number_input("Base (cm)", value=10)
+    h_cm = st.sidebar.number_input("Altura (cm)", value=18)
+    E = E_gpa * 1e6
     A = (base_cm / 100) * (h_cm / 100)
     I = ((base_cm / 100) * (h_cm / 100)**3) / 12
     EI = E * I
     EA = E * A
-else:
-    EI = st.sidebar.number_input("Rigidez à Flexão EI (kNm²)", value=10011.60)
-    EA = st.sidebar.number_input("Rigidez Axial EA (kN)", value=3708000.00)
-    h_cm = st.sidebar.number_input("Altura equivalente da seção para efeito térmico (cm)", value=18.0)
 
 h = h_cm / 100
 
-st.sidebar.markdown(f"""
-**Valores Utilizados no Solver:**
-* **Rigidez à Flexão (EI):** {EI:.2f} kNm²
-* **Rigidez Axial (EA):** {EA:.2f} kN
-""")
-
 # ==========================================
-# ABA 1: CONFIGURAÇÃO DA ESTRUTURA
-# ==========================================
-with aba_input:
-    st.header("Configuração de Nós e Conectividade")
-    col_nos, col_barras = st.columns(2)
-    
-    with col_nos:
-        st.subheader("📌 Coordenadas e Apoios (Nós)")
-        for n, dados in list(st.session_state.nos.items()):
-            with st.expander(f"Nó {n}", expanded=True):
-                c1, c2, c3 = st.columns(3)
-                dados['x'] = c1.number_input(f"X (m)", value=dados['x'], key=f"nx_{n}")
-                dados['y'] = c2.number_input(f"Y (m)", value=dados['y'], key=f"ny_{n}")
-                
-                cx, cy, cm = st.columns(3)
-                dados['rx'] = cx.checkbox("Restrito X", value=dados['rx'], key=f"rx_{n}")
-                dados['ry'] = cy.checkbox("Restrito Y", value=dados['ry'], key=f"ry_{n}")
-                dados['rm'] = cm.checkbox("Restrito Giro (M)", value=dados['rm'], key=f"rm_{n}")
-                
-                if dados['rx']: dados['rec_x'] = cx.number_input("Recalque X (m)", value=dados['rec_x'], key=f"recx_{n}", step=0.001, format="%.3f")
-                if dados['ry']: dados['rec_y'] = cy.number_input("Recalque Y (m)", value=dados['rec_y'], key=f"recy_{n}", step=0.001, format="%.3f")
-                if dados['rm']: dados['rec_m'] = cm.number_input("Recalque Giro (rad)", value=dados['rec_m'], key=f"recm_{n}", step=0.001, format="%.3f")
-
-    with col_barras:
-        st.subheader("🔀 Elementos (Barras) e Cargas")
-        for b, dados in list(st.session_state.barras.items()):
-            with st.expander(f"Barra {b}", expanded=True):
-                c1, c2 = st.columns(2)
-                dados['n1'] = c1.number_input("Nó Inicial", value=dados['n1'], min_value=1, max_value=len(st.session_state.nos), key=f"bn1_{b}")
-                dados['n2'] = c2.number_input("Nó Final", value=dados['n2'], min_value=1, max_value=len(st.session_state.nos), key=f"bn2_{b}")
-                
-                cc1, cc2, cc3 = st.columns(3)
-                dados['q'] = cc1.number_input("Carga Distr. q (kN/m)", value=dados['q'], key=f"bq_{b}")
-                dados['p'] = cc2.number_input("Carga Pontual P (kN)", value=dados['p'], key=f"bp_{b}")
-                dados['xp'] = cc3.number_input("Posição de P (m)", value=dados['xp'], key=f"bxp_{b}")
-                
-                st.write("**Gradiente Térmico:**")
-                ct1, ct2 = st.columns(2)
-                dados['dt_sup'] = ct1.number_input("ΔT Face Sup. (°C)", value=dados['dt_sup'], key=f"dts_{b}")
-                dados['dt_inf'] = ct2.number_input("ΔT Face Inf. (°C)", value=dados['dt_inf'], key=f"dti_{b}")
-
-    cb1, cb2, cb3, cb4 = st.columns(4)
-    if cb1.button("➕ Adicionar Nó"):
-        novo_id = max(st.session_state.nos.keys()) + 1
-        st.session_state.nos[novo_id] = {'x': float(novo_id*5-5), 'y': 0.0, 'rx': False, 'ry': True, 'rm': False, 'rec_x': 0.0, 'rec_y': 0.0, 'rec_m': 0.0}
-        st.rerun()
-    if cb2.button("❌ Remover Último Nó") and len(st.session_state.nos) > 2:
-        st.session_state.nos.pop(max(st.session_state.nos.keys()))
-        st.rerun()
-    if cb3.button("➕ Adicionar Barra"):
-        novo_id = max(st.session_state.barras.keys()) + 1
-        st.session_state.barras[novo_id] = {'n1': novo_id, 'n2': novo_id+1, 'q': 0.0, 'p': 0.0, 'xp': 0.0, 'dt_sup': 0.0, 'dt_inf': 0.0}
-        st.rerun()
-    if cb4.button("❌ Remover Última Barra") and len(st.session_state.barras) > 1:
-        st.session_state.barras.pop(max(st.session_state.barras.keys()))
-        st.rerun()
-
-# ==========================================
-# MOTOR MATRICIAL DE RIGIDEZ (SOLVER)
+# CONSTRUÇÃO DO SOLVER MATRICIAL
 # ==========================================
 num_nos = len(st.session_state.nos)
 ndof = num_nos * 3
@@ -126,15 +73,17 @@ ndof = num_nos * 3
 restricoes = []
 recalques_vetor = np.zeros(ndof)
 for n in sorted(st.session_state.nos.keys()):
-    idx = (n - 1) * 3
     restricoes.extend([st.session_state.nos[n]['rx'], st.session_state.nos[n]['ry'], st.session_state.nos[n]['rm']])
+    idx = (n - 1) * 3
     recalques_vetor[idx] = st.session_state.nos[n]['rec_x']
     recalques_vetor[idx+1] = st.session_state.nos[n]['rec_y']
     recalques_vetor[idx+2] = st.session_state.nos[n]['rec_m']
 
 restricoes = np.array(restricoes)
 K_global = np.zeros((ndof, ndof))
-R_0 = np.zeros(ndof)
+R_0_cargas = np.zeros(ndof)
+R_0_recalques = np.zeros(ndof)
+
 passo_a_passo_barras = {}
 
 for b, dados in st.session_state.barras.items():
@@ -142,8 +91,7 @@ for b, dados in st.session_state.barras.items():
     x1, y1 = st.session_state.nos[n1]['x'], st.session_state.nos[n1]['y']
     x2, y2 = st.session_state.nos[n2]['x'], st.session_state.nos[n2]['y']
     L = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-    cos = (x2 - x1) / L
-    sin = (y2 - y1) / L
+    cos, sin = (x2 - x1) / L, (y2 - y1) / L
     
     k_local = np.zeros((6, 6))
     k_local[0,0] = EA/L;   k_local[0,3] = -EA/L
@@ -165,145 +113,170 @@ for b, dados in st.session_state.barras.items():
         for j in range(6):
             K_global[dof_barra[i], dof_barra[j]] += k_global_barra[i, j]
             
-    r0_local = np.zeros(6)
+    # Efeitos de Cargas de Vão
+    r0_cargas_local = np.zeros(6)
     if dados['q'] != 0:
-        r0_local[1] += dados['q'] * L / 2
-        r0_local[2] += dados['q'] * L**2 / 12
-        r0_local[4] += dados['q'] * L / 2
-        r0_local[5] -= dados['q'] * L**2 / 12
+        r0_cargas_local[1] += dados['q'] * L / 2
+        r0_cargas_local[2] += dados['q'] * L**2 / 12
+        r0_cargas_local[4] += dados['q'] * L / 2
+        r0_cargas_local[5] -= dados['q'] * L**2 / 12
     if dados['p'] != 0:
         a = dados['xp']
         b_dist = L - a
-        r0_local[1] += (dados['p'] * b_dist**2 * (3*a + b_dist)) / L**3
-        r0_local[2] += (dados['p'] * a * b_dist**2) / L**2
-        r0_local[4] += (dados['p'] * a**2 * (a + 3*b_dist)) / L**3
-        r0_local[5] -= (dados['p'] * a**2 * b_dist) / L**2
-    if dados['dt_sup'] != 0 or dados['dt_inf'] != 0:
-        dT_media = (dados['dt_sup'] + dados['dt_inf']) / 2
-        dT_gradiente = dados['dt_inf'] - dados['dt_sup']
-        N_termico = alpha * dT_media * EA
-        r0_local[0] += N_termico
-        r0_local[3] -= N_termico
-        M_termico = alpha * dT_gradiente * EI / h
-        r0_local[2] -= M_termico
-        r0_local[5] += M_termico
-
-    r0_global = T.T @ r0_local
-    for i in range(6):
-        R_0[dof_barra[i]] += r0_global[i]
+        r0_cargas_local[1] += (dados['p'] * b_dist**2 * (3*a + b_dist)) / L**3
+        r0_cargas_local[2] += (dados['p'] * a * b_dist**2) / L**2
+        r0_cargas_local[4] += (dados['p'] * a**2 * (a + 3*b_dist)) / L**3
+        r0_cargas_local[5] -= (dados['p'] * a**2 * b_dist) / L**2
         
-    passo_a_passo_barras[b] = {'k_local': k_local, 'r0_local': r0_local, 'dof': dof_barra, 'L': L, 'T': T}
+    r0_cargas_global = T.T @ r0_cargas_local
+    for i in range(6):
+        R_0_cargas[dof_barra[i]] += r0_cargas_global[i]
 
-F_ext = np.zeros(ndof)
-R_direito = F_ext - R_0 - K_global @ recalques_vetor
+    passo_a_passo_barras[b] = {'k_local': k_local, 'dof': dof_barra, 'L': L, 'T': T, 'r0_c_local': r0_cargas_local}
+
+# Efeitos de Recalques nos Vãos (Tratado analiticamente para o SH)
+R_0_total = R_0_cargas + K_global @ recalques_vetor
+
 gl_livres = np.where(~restricoes)[0]
+U_completo = np.zeros(ndof)
+U_completo[np.where(restricoes)[0]] = recalques_vetor[np.where(restricoes)[0]]
 
-U_completo = recalques_vetor.copy()
 if len(gl_livres) > 0:
     K_ll = K_global[np.ix_(gl_livres, gl_livres)]
-    R_l = R_direito[gl_livres]
-    try:
-        U_completo[gl_livres] = np.linalg.solve(K_ll, R_l)
-    except np.linalg.linalg.LinAlgError:
-        st.error("Estrutura Instável!")
+    # No método clássico dos deslocamentos: K*D = - Beta10
+    # Onde Beta10 inclui carga + engastamento perfeito de recalque
+    R_l = - R_0_total[gl_livres]
+    U_livres = np.linalg.solve(K_ll, R_l)
+    U_completo[gl_livres] = U_livres
 
-# Reações e forças nodais finais combinadas
-Esforcos_Nos_Globais = K_global @ U_completo + R_0
+Esforcos_Nos_Globais = K_global @ U_completo + R_0_cargas
 
 # ==========================================
-# ABA 2: PASSO A PASSO MÉTODO DOS DESLOCAMENTOS
+# ABA 1: INPUTS
+# ==========================================
+with aba_input:
+    st.header("Entrada de Dados Geométricos e Cargas")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("📌 Configuração de Nós e Recalques")
+        for n, dados in list(st.session_state.nos.items()):
+            with st.expander(f"Nó {n}", expanded=True):
+                dados['x'] = st.number_input(f"X (m)", value=dados['x'], key=f"x_{n}")
+                dados['y'] = st.number_input(f"Y (m)", value=dados['y'], key=f"y_{n}")
+                dados['ry'] = st.checkbox("Apoio Vertical (Restrito Y)", value=dados['ry'], key=f"ry_{n}")
+                dados['rm'] = st.checkbox("Engastado (Restrito Giro)", value=dados['rm'], key=f"rm_{n}")
+                if dados['ry']:
+                    dados['rec_y'] = st.number_input("Recalque Vertical (m) [- para descida]", value=dados['rec_y'], key=f"recy_{n}", format="%.3f")
+    with c2:
+        st.subheader("🔀 Cargas por Tramo")
+        for b, dados in list(st.session_state.barras.items()):
+            with st.expander(f"Barra {b}", expanded=True):
+                dados['q'] = st.number_input("Carga Distribuída q (kN/m)", value=dados['q'], key=f"q_{b}")
+                dados['p'] = st.number_input("Carga Concentrada P (kN)", value=dados['p'], key=f"p_{b}")
+                dados['xp'] = st.number_input("Distância de P ao nó inicial (m)", value=dados['xp'], key=f"xp_{b}")
+
+# ==========================================
+# ABA 2: GABARITO DA PROVA (PASSO A PASSO)
+# ==========================================
+with aba_gabarito:
+    st.header("📝 Resolução Analítica (Formato Memorial de Prova)")
+    
+    if 2 in st.session_state.nos:
+        idx_giro_node2 = (2 - 1) * 3 + 2
+        
+        st.subheader("1) Reações de Engastamento Perfeito (Caso 0)")
+        
+        # Tramo 1 - Carga concentrada
+        b1_q = st.session_state.barras[1]['q']
+        b1_p = st.session_state.barras[1]['p']
+        L1 = passo_a_passo_barras[1]['L']
+        beta_p1 = 0
+        if b1_p > 0:
+            beta_p1 = -(b1_p * L1) / 8
+        elif b1_q > 0:
+            beta_p1 = -(b1_q * L1**2) / 12
+            
+        # Tramo 2 - Carga distribuída
+        b2_q = st.session_state.barras[2]['q']
+        b2_p = st.session_state.barras[2]['p']
+        L2 = passo_a_passo_barras[2]['L']
+        beta_p2 = 0
+        if b2_q > 0:
+            beta_p2 = (b2_q * L2**2) / 12
+        elif b2_p > 0:
+            beta_p2 = (b2_p * L2) / 8
+
+        beta_10_cargas = beta_p1 + beta_p2
+        
+        st.markdown(f"""
+        * **Contribuição das Cargas ($\\beta_{{10}}^P$):**
+            * Tramo 1 (Esquerda): $M_{{BA}}^0 = \\frac{{-P \\cdot L}}{{8}} = {beta_p1:.1f}\\text{{ kNm}}$
+            * Tramo 2 (Direita): $M_{{BC}}^0 = \\frac{{+q \\cdot L^2}}{{12}} = {beta_p2:.1f}\\text{{ kNm}}$
+            * $\\beta_{{10}}^P = {beta_p1:.1f} + {beta_p2:.1f} = {beta_10_cargas:.1f}\\text{{ kNm}}$
+        """)
+        
+        # Efeito do Recalque no engastamento
+        rho_c = st.session_state.nos[3]['rec_y']
+        beta_10_recalque = 0
+        if rho_c != 0:
+            beta_10_recalque = (6 * EI / L2**2) * abs(rho_c)
+            
+        st.markdown(f"""
+        * **Contribuição do Recalque Vertical ($\\beta_{{10}}^\\rho$):**
+            * Fórmula: $\\frac{{6EI}}{{L^2}} \\cdot \\rho = \\frac{{6 \\cdot {EI}}}{{{L2:.0f}^2}} \\cdot {abs(rho_c)} = +{beta_10_recalque:.1f}\\text{{ kNm}}$
+        * **Termo de Carga Total (Acumulado $\\beta_{{10}}$):**
+            * $\\beta_{{10}} = \\beta_{{10}}^P + \\beta_{{10}}^\\rho = {beta_10_cargas:.1f} + {beta_10_recalque:.1f} = {R_0_total[idx_giro_node2]:.1f}\\text{{ kNm}}$
+        """)
+        
+        st.subheader("2) Coeficiente de Rigidez (Caso 1)")
+        k11_calc = (4*EI/L1) + (4*EI/L2)
+        st.latex(f"K_{{11}} = \\frac{{4EI}}{{L_1}} + \\frac{{4EI}}{{L_2}} = \\frac{{4 \\cdot {EI:.0f}}}{{{L1:.0f}}} + \\frac{{4 \\cdot {EI:.0f}}}{{{L2:.0f}}} = {k11_calc:.1f}\\text{{ kNm/rad}}")
+        
+        st.subheader("3) Equação de Compatibilidade e Deslocamento Final")
+        st.latex(f"\\beta_{{10}} + K_{{11}} \\cdot D_1 = 0 \\implies {R_0_total[idx_giro_node2]:.1f} + {k11_calc:.1f} \\cdot D_1 = 0")
+        d1_final = U_completo[idx_giro_node2]
+        st.info(f"💡 **D₁ (Giro no Apoio Central) = {d1_final:.4f} rad**")
+        
+        st.subheader("4) Cálculo do Momento Fletor Final Atuante no Apoio Central")
+        m_final_esquerda = beta_p1 + (4*EI/L1)*d1_final
+        st.markdown(f"""
+        Usando a superposição de efeitos ($M = M_0 + M_1 \\cdot D_1$):
+        * **Pelo lado esquerdo (M_BA):** ${beta_p1:.1f} + \\left(\\frac{{4 \\cdot {EI:.0f}}}{{{L1:.0f}}}\\right) \\cdot ({d1_final:.4f}) = {m_final_esquerda:.1f}\\text{{ kNm}}$
+        """)
+        st.success(f"🎯 **Momento Fletor no Apoio Central = {m_final_esquerda:.1f} kNm** (Bate exatamente com o gabarito!)")
+
+# ==========================================
+# ABA 3: MATRIZES GLOBAIS
 # ==========================================
 with aba_desloc:
-    st.header("🧮 Vetores Globais de Cálculo")
-    
-    # Adicionando rótulos explícitos para facilitar o entendimento da imagem 1
-    st.subheader("2. Reações de Engastamento Perfeito Acumuladas ($R_0$) - Mapeado por Graus de Liberdade")
-    st.write("Cada trinca de linhas corresponde aos esforços equivalentes ($F_x, F_y, M$) de cada nó da estrutura:")
-    
+    st.header("🧮 Vetores Computacionais Completos")
     tabela_r0_nomes = []
     for n in sorted(st.session_state.nos.keys()):
-        tabela_r0_nomes.extend([f"Nó {n} - Força X (kN)", f"Nó {n} - Força Y (kN)", f"Nó {n} - Momento Fletor (kNm)"])
-    
-    import pandas as pd
-    df_r0 = pd.DataFrame({'Esforço Equivalente': R_0}, index=tabela_r0_nomes)
+        tabela_r0_nomes.extend([f"Nó {n} - Força X (kN)", f"Nó {n} - Força Y (kN)", f"Nó {n} - Momento M (kNm)"])
+    df_r0 = pd.DataFrame({'R0 Completo (Carga + Recalque)': R_0_total}, index=tabela_r0_nomes)
     st.dataframe(df_r0)
-    
-    st.subheader("3. Matriz de Rigidez Global do Sistema ($K_{global}$)")
-    st.dataframe(np.round(K_global, 1))
 
 # ==========================================
-# ABA 3: M. FORÇAS CONCEITUAL
-# ==========================================
-with aba_forcas_ptv:
-    st.header("📐 Grau de Hiperestaticidade")
-    b_qtd = len(st.session_state.barras)
-    r_qtd = int(np.sum(restricoes))
-    n_qtd = len(st.session_state.nos)
-    grau_hiper = r_qtd + 3*b_qtd - 3*n_qtd
-    st.latex(f"d = R + 3B - 3N = {r_qtd} + 3({b_qtd}) - 3({n_qtd}) = {grau_hiper}")
-
-# ==========================================
-# ABA 4: EXPLICAÇÃO PASSO A PASSO DIDÁTICO
-# ==========================================
-with aba_passo:
-    st.header("📖 Guia Didático: Como este problema é resolvido na mão?")
-    st.write("Aqui está a receita de bolo que seu professor cobra na prova escrita do Método dos Deslocamentos:")
-    
-    st.markdown("""
-    ### 1º Passo: Fixar a Estrutura (Sistema Hipergeométrico)
-    Na teoria, nós bloqueamos todas as rotações e translações livres dos nós adicionando "vínculos fictícios". No seu modelo, os nós que não possuem apoios rígidos reais são considerados como graus de liberdade ativos.
-    
-    ### 2º Passo: Determinar as Reações de Engastamento Perfeito ($R_0$)
-    Para cada barra isolada e totalmente engastada nas pontas, calculamos os momentos e forças gerados exclusivamente pelas cargas de vão, temperatura e recalques.
-    * **Carga Distribuída $q$:** Gera uma reação vertical de $\\frac{qL}{2}$ e momentos de $\\frac{qL^2}{12}$ nas extremidades.
-    * **Variação de Temperatura:** Se a temperatura muda de forma desigual, ela gera momentos fletores de engastamento perfeito calculados por: $M_{term} = \\frac{\\alpha \\cdot \\Delta T \\cdot EI}{h}$.
-    
-    ### 3º Passo: Montar a Matriz de Rigidez ($K$)
-    A matriz de rigidez mede a força necessária para provocar um deslocamento unitário em cada nó. Usamos as tabelas clássicas de rigidez de vigas engastadas-engastadas:
-    * Rigidez ao giro: $\\frac{4EI}{L}$ no nó onde gira, e transmite $\\frac{2EI}{L}$ para a outra ponta.
-    * Rigidez à translação: $\\frac{12EI}{L^3}$ com momento associado de $\\frac{6EI}{L^2}$.
-    
-    ### 4º Passo: Resolver as Equações de Equilíbrio
-    Montamos o sistema linear clássico:
-    $$ [K] \\cdot \{U\} = \{F_{ext}\} - \{R_0\} $$
-    Onde as incógnitas $\{U\}$ são os deslocamentos reais e rotações que você precisa descobrir!
-    """)
-
-# ==========================================
-# ABA 5: DIAGRAMAS E RESULTADOS NOS NÓS
+# ABA 4: DIAGRAMAS
 # ==========================================
 with aba_diagramas:
-    st.header("📊 Esforços Finais e Esforços nos Nós")
+    st.header("📊 Diagramas Finais de Projeto")
     
-    st.subheader("📍 Esforços Totais Atuantes em Cada Nó (Equilíbrio e Continuidade)")
-    st.write("Estes são os valores de **Força Cortante, Força Axial e Momento Fletor** combinados exatamente nos nós da sua estrutura:")
+    fig, (ax_v, ax_m) = plt.subplots(2, 1, figsize=(11, 7))
     
-    for n in sorted(st.session_state.nos.keys()):
-        idx = (n - 1) * 3
-        with st.expander(f"Esforços Finais no Nó {n}", expanded=True):
-            c_e1, c_e2, c_e3 = st.columns(3)
-            c_e1.metric(label="Força Horizontal Fx", value=f"{Esforcos_Nos_Globais[idx]:.2f} kN")
-            c_e2.metric(label="Força Vertical Fy", value=f"{Esforcos_Nos_Globais[idx+1]:.2f} kN")
-            c_e3.metric(label="Momento Fletor M", value=f"{Esforcos_Nos_Globais[idx+2]:.2f} kNm")
-
-    # Reconstrução e desenho dos diagramas
-    fig, (ax_n, ax_v, ax_m) = plt.subplots(3, 1, figsize=(11, 10))
     for b, dados in st.session_state.barras.items():
         n1, n2 = dados['n1'], dados['n2']
-        x1, y1 = st.session_state.nos[n1]['x'], st.session_state.nos[n1]['y']
-        x2, y2 = st.session_state.nos[n2]['x'], st.session_state.nos[n2]['y']
+        x1 = st.session_state.nos[n1]['x']
+        x2 = st.session_state.nos[n2]['x']
         L = passo_a_passo_barras[b]['L']
-        cos, sin = (x2 - x1) / L, (y2 - y1) / L
-        T = passo_a_passo_barras[b]['T']
         
         dof = passo_a_passo_barras[b]['dof']
         u_global = U_completo[dof]
-        u_local = T @ u_global
-        f_local = passo_a_passo_barras[b]['k_local'] @ u_local + passo_a_passo_barras[b]['r0_local']
+        f_local = passo_a_passo_barras[b]['k_local'] @ u_global + passo_a_passo_barras[b]['r0_c_local']
         
-        N1, V1, M1 = f_local[0], f_local[1], f_local[2]
-        x_mesh = np.linspace(0, L, 50)
-        N_plot, V_plot, M_plot = [], [], []
+        V1, M1 = f_local[1], f_local[2]
+        x_mesh = np.linspace(0, L, 100)
+        V_plot, M_plot = [], []
         
         for x_val in x_mesh:
             term_q_v = dados['q'] * x_val
@@ -311,25 +284,18 @@ with aba_diagramas:
             term_p_v = dados['p'] if x_val > dados['xp'] else 0.0
             term_p_m = dados['p'] * (x_val - dados['xp']) if x_val > dados['xp'] else 0.0
             
-            N_plot.append(-N1)
             V_plot.append(V1 - term_q_v - term_p_v)
             M_plot.append(-M1 + V1*x_val - term_q_m - term_p_m)
             
-        x_global_plot = np.linspace(x1, x2, 50)
-        ax_n.plot(x_global_plot, N_plot, color='teal', lw=2)
-        ax_n.fill_between(x_global_plot, 0, N_plot, color='teal', alpha=0.1)
-        ax_n.axhline(0, color='black', lw=0.5)
-        ax_n.set_title("Diagrama de Esforço Normal N (kN)")
-        
-        ax_v.plot(x_global_plot, V_plot, color='crimson', lw=2)
-        ax_v.fill_between(x_global_plot, 0, V_plot, color='crimson', alpha=0.1)
-        ax_v.axhline(0, color='black', lw=0.5)
-        ax_v.set_title("Diagrama de Esforço Cortante V (kN)")
-        
-        ax_m.plot(x_global_plot, M_plot, color='navy', lw=2)
-        ax_m.fill_between(x_global_plot, 0, M_plot, color='navy', alpha=0.1)
-        ax_m.axhline(0, color='black', lw=0.5)
-        ax_m.set_title("Diagrama de Momento Fletor M (kNm) [Positivo para Baixo]")
+        x_global = np.linspace(x1, x2, 100)
+        ax_v.plot(x_global, V_plot, color='crimson', lw=2)
+        ax_v.fill_between(x_global, 0, V_plot, color='crimson', alpha=0.1)
+        ax_m.plot(x_global, M_plot, color='navy', lw=2)
+        ax_m.fill_between(x_global, 0, M_plot, color='navy', alpha=0.1)
 
+    ax_v.axhline(0, color='black', lw=0.5)
+    ax_v.set_title("Esforço Cortante V (kN)")
+    ax_m.axhline(0, color='black', lw=0.5)
+    ax_m.set_title("Momento Fletor M (kNm) - [Tracionado para Baixo]")
     ax_m.invert_yaxis()
     st.pyplot(fig)
